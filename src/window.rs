@@ -1097,7 +1097,7 @@ fn set_startup_enabled(enable: bool) {
 
 // Dimensions matching the C# version
 const SEGMENT_W: i32 = 10;
-const SEGMENT_H: i32 = 15;
+const SEGMENT_H: i32 = 13;
 const SEGMENT_GAP: i32 = 1;
 const CORNER_RADIUS: i32 = 2;
 
@@ -1192,7 +1192,7 @@ fn claude_usage_text_color(is_dark: bool) -> Color {
     if is_dark {
         Color::from_hex("#F09A7A")
     } else {
-        Color::from_hex("#A94F32")
+        Color::from_hex("#6A2618")
     }
 }
 
@@ -1622,8 +1622,8 @@ fn render_layered() {
         let pixel_count = (width * height) as usize;
 
         // Render once with the actual taskbar background colour.
-        // The layered window is alpha-composited, so use grayscale antialiasing
-        // instead of ClearType sub-pixel rendering to avoid smeared text.
+        // Layered bitmap text is rendered without antialiasing to avoid baked-in
+        // fringe pixels that appear soft after taskbar compositing.
         paint_content(
             mem_dc,
             width,
@@ -1651,8 +1651,8 @@ fn render_layered() {
             cx_weekly_pace,
         );
 
-        // Background pixels → alpha 1 (nearly invisible but still hittable for right-click).
-        // Content pixels → fully opaque (preserves ClearType sub-pixel rendering).
+        // Background pixels -> alpha 1 (nearly invisible but still hittable for right-click).
+        // Content pixels -> fully opaque.
         let bg_bgr = bg_color.to_colorref();
         let pixel_data = std::slice::from_raw_parts_mut(bits as *mut u32, pixel_count);
         for px in pixel_data.iter_mut() {
@@ -1782,7 +1782,7 @@ fn paint_content(
 
         let font_name = native_interop::wide_str("Segoe UI");
         let font = CreateFontW(
-            sc(-14),
+            sc(-12),
             0,
             0,
             0,
@@ -1793,7 +1793,7 @@ fn paint_content(
             DEFAULT_CHARSET.0 as u32,
             OUT_TT_PRECIS.0 as u32,
             CLIP_DEFAULT_PRECIS.0 as u32,
-            ANTIALIASED_QUALITY.0 as u32,
+            NONANTIALIASED_QUALITY.0 as u32,
             (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
             PCWSTR::from_raw(font_name.as_ptr()),
         );
