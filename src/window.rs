@@ -1097,7 +1097,7 @@ fn set_startup_enabled(enable: bool) {
 
 // Dimensions matching the C# version
 const SEGMENT_W: i32 = 10;
-const SEGMENT_H: i32 = 13;
+const SEGMENT_H: i32 = 15;
 const SEGMENT_GAP: i32 = 1;
 const CORNER_RADIUS: i32 = 2;
 
@@ -1782,7 +1782,7 @@ fn paint_content(
 
         let font_name = native_interop::wide_str("Segoe UI");
         let font = CreateFontW(
-            sc(-12),
+            sc(-14),
             0,
             0,
             0,
