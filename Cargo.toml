@@ -4,7 +4,7 @@ version = "1.3.1"
 edition = "2021"
 license = "MIT"
 description = "Claude & Codex usage monitor for the Windows taskbar"
-repository = "https://github.com/Ch1nzo/claude-codex-usage-monitor"
+repository = "https://github.com/niaz-ahamed77/claude-codex-usage-monitor"
 
 [package.metadata.winres]
 CompanyName = "Chinzoe"
