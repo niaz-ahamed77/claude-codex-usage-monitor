@@ -1622,8 +1622,8 @@ fn render_layered() {
         let pixel_count = (width * height) as usize;
 
         // Render once with the actual taskbar background colour.
-        // Using an opaque background lets us use CLEARTYPE_QUALITY for
-        // sub-pixel font rendering that matches the rest of the OS.
+        // The layered window is alpha-composited, so use grayscale antialiasing
+        // instead of ClearType sub-pixel rendering to avoid smeared text.
         paint_content(
             mem_dc,
             width,
@@ -1793,7 +1793,7 @@ fn paint_content(
             DEFAULT_CHARSET.0 as u32,
             OUT_TT_PRECIS.0 as u32,
             CLIP_DEFAULT_PRECIS.0 as u32,
-            CLEARTYPE_QUALITY.0 as u32,
+            ANTIALIASED_QUALITY.0 as u32,
             (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
             PCWSTR::from_raw(font_name.as_ptr()),
         );
