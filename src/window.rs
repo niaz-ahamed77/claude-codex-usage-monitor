@@ -642,6 +642,7 @@ fn toggle_widget_visibility(hwnd: HWND) {
             return;
         }
     };
+    diagnose::log(format!("explicit widget visibility toggle -> {new_visible}"));
     save_state_settings();
     unsafe {
         if new_visible {
@@ -2876,9 +2877,6 @@ unsafe extern "system" fn wnd_proc(
         }
         _ if msg == WM_APP_TRAY => {
             match tray_icon::handle_message(lparam) {
-                tray_icon::TrayAction::ToggleWidget => {
-                    toggle_widget_visibility(hwnd);
-                }
                 tray_icon::TrayAction::ShowContextMenu => {
                     show_context_menu(hwnd);
                 }

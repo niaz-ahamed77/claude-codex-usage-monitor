@@ -19,7 +19,6 @@ pub const IDM_TOGGLE_WIDGET: u16 = 50;
 /// Actions the tray message handler can request from the main window.
 pub enum TrayAction {
     None,
-    ToggleWidget,
     ShowContextMenu,
 }
 
@@ -422,7 +421,10 @@ pub fn remove_all(hwnd: HWND) {
 pub fn handle_message(lparam: LPARAM) -> TrayAction {
     let mouse_msg = lparam.0 as u32;
     match mouse_msg {
-        WM_LBUTTONUP => TrayAction::ToggleWidget,
+        // Left-click intentionally does nothing. Visibility is controlled
+        // explicitly from the context-menu "Show Widget" item, avoiding
+        // accidental persistent hides from incidental tray clicks.
+        WM_LBUTTONUP => TrayAction::None,
         WM_RBUTTONUP => TrayAction::ShowContextMenu,
         _ => TrayAction::None,
     }
@@ -438,4 +440,25 @@ fn copy_to_tip(s: &str, tip: &mut [u16; 128]) {
     }
     tip[..len].copy_from_slice(&wide[..len]);
     tip[len] = 0;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn left_click_does_not_toggle_widget_visibility() {
+        assert!(matches!(
+            handle_message(LPARAM(WM_LBUTTONUP as isize)),
+            TrayAction::None
+        ));
+    }
+
+    #[test]
+    fn right_click_still_opens_context_menu() {
+        assert!(matches!(
+            handle_message(LPARAM(WM_RBUTTONUP as isize)),
+            TrayAction::ShowContextMenu
+        ));
+    }
 }
