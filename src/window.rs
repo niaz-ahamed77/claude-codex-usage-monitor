@@ -1156,6 +1156,43 @@ fn claude_accent_color() -> Color {
     Color::from_hex("#D97757")
 }
 
+fn taskbar_background_color(is_dark: bool) -> Color {
+    let fallback = if is_dark {
+        Color::from_hex("#1C1C1C")
+    } else {
+        Color::from_hex("#F3F3F3")
+    };
+
+    let Some(taskbar_hwnd) = native_interop::find_taskbar() else {
+        return fallback;
+    };
+    let Some(rect) = native_interop::get_window_rect_safe(taskbar_hwnd) else {
+        return fallback;
+    };
+
+    unsafe {
+        let dc = GetDC(HWND::default());
+        if dc.0.is_null() {
+            return fallback;
+        }
+
+        let x = rect.left + 8;
+        let y = rect.top + ((rect.bottom - rect.top) / 2);
+        let pixel = GetPixel(dc, x, y);
+        ReleaseDC(HWND::default(), dc);
+
+        if pixel.0 == CLR_INVALID {
+            return fallback;
+        }
+
+        Color::new(
+            (pixel.0 & 0xFF) as u8,
+            ((pixel.0 >> 8) & 0xFF) as u8,
+            ((pixel.0 >> 16) & 0xFF) as u8,
+        )
+    }
+}
+
 /// Color-code a usage percentage as green -> yellow -> orange -> red. Used by
 /// the non-default bar themes. Slightly brighter tones in dark mode.
 fn usage_threshold_color(percent: f64, is_dark: bool) -> Color {
@@ -1191,17 +1228,17 @@ fn codex_accent_color(is_dark: bool) -> Color {
 
 fn claude_usage_text_color(is_dark: bool) -> Color {
     if is_dark {
-        Color::from_hex("#F09A7A")
+        Color::from_hex("#F2F2F2")
     } else {
-        Color::from_hex("#6A2618")
+        Color::from_hex("#202020")
     }
 }
 
 fn codex_usage_text_color(is_dark: bool) -> Color {
     if is_dark {
-        Color::from_hex("#F5F5F5")
+        Color::from_hex("#F2F2F2")
     } else {
-        Color::from_hex("#1F1F1F")
+        Color::from_hex("#202020")
     }
 }
 
@@ -1301,12 +1338,12 @@ pub fn run() {
         let language = localization::resolve_language(language_override);
         let install_channel = updater::current_install_channel();
 
-        // Create as layered popup (will be reparented into taskbar)
+        // Create a normal no-activate popup that overlays the taskbar
         let title = native_interop::wide_str(language.strings().window_title);
         let initial_model_count =
             active_model_count(settings.show_claude_code, settings.show_codex);
         let hwnd = CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             PCWSTR::from_raw(class_name.as_ptr()),
             PCWSTR::from_raw(title.as_ptr()),
             WS_POPUP,
@@ -1341,7 +1378,6 @@ pub fn run() {
         diagnose::log(format!("main window created hwnd={:?}", hwnd));
 
         let is_dark = theme::is_dark_mode();
-        let mut embedded = false;
 
         {
             let mut state = lock_state();
@@ -1383,16 +1419,14 @@ pub fn run() {
             });
         }
 
-        // Try to embed in taskbar
+        // Discover taskbar/tray geometry, but keep the widget as a normal
+        // top-level popup so text is rendered on a non-layered surface.
         if let Some(taskbar_hwnd) = native_interop::find_taskbar() {
             diagnose::log(format!("taskbar found hwnd={:?}", taskbar_hwnd));
-            native_interop::embed_in_taskbar(hwnd, taskbar_hwnd);
-            embedded = true;
 
             let mut state = lock_state();
             let s = state.as_mut().unwrap();
             s.taskbar_hwnd = Some(taskbar_hwnd);
-            s.embedded = true;
 
             let tray_notify = native_interop::find_child_window(taskbar_hwnd, "TrayNotifyWnd");
             s.tray_notify_hwnd = tray_notify;
@@ -1416,19 +1450,16 @@ pub fn run() {
             diagnose::log("taskbar not found; using fallback popup window");
         }
 
-        // If not embedded, fall back to topmost popup with SetLayeredWindowAttributes
-        if !embedded {
-            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
-            let _ = SetWindowPos(
-                hwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            );
-        }
+        // Keep the taskbar overlay above Explorer without activating it.
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
 
         // Register system tray icon(s)
         sync_tray_icons(hwnd);
@@ -1577,9 +1608,9 @@ fn render_layered() {
         Color::from_hex("#AAAAAA")
     };
     let text_color = if is_dark {
-        Color::from_hex("#888888")
+        Color::from_hex("#F2F2F2")
     } else {
-        Color::from_hex("#404040")
+        Color::from_hex("#202020")
     };
     let bg_color = if is_dark {
         Color::from_hex("#1C1C1C")
@@ -2180,6 +2211,17 @@ fn position_at_taskbar() {
         // Topmost popup: screen coordinates
         let x = tray_left - widget_width - tray_offset;
         native_interop::move_window(hwnd, x, y, widget_width, widget_height);
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                x,
+                y,
+                widget_width,
+                widget_height,
+                SWP_NOACTIVATE,
+            );
+        }
         diagnose::log(format!(
             "positioned fallback widget at x={x} y={y} w={widget_width} h={widget_height}"
         ));
@@ -3356,21 +3398,23 @@ fn paint(hdc: HDC, hwnd: HWND) {
     };
 
     let accent = claude_accent_color();
-    let codex_accent = codex_accent_color(is_dark);
-    let track = if is_dark {
-        Color::from_hex("#444444")
+    let bg_color = taskbar_background_color(is_dark);
+    let luminance = (299u32 * bg_color.r as u32
+        + 587u32 * bg_color.g as u32
+        + 114u32 * bg_color.b as u32)
+        / 1000u32;
+    let surface_is_dark = luminance < 128;
+
+    let codex_accent = codex_accent_color(surface_is_dark);
+    let track = if surface_is_dark {
+        Color::from_hex("#5A5A5A")
     } else {
         Color::from_hex("#AAAAAA")
     };
-    let text_color = if is_dark {
-        Color::from_hex("#888888")
+    let text_color = if surface_is_dark {
+        Color::from_hex("#F2F2F2")
     } else {
-        Color::from_hex("#404040")
-    };
-    let bg_color = if is_dark {
-        Color::from_hex("#1C1C1C")
-    } else {
-        Color::from_hex("#F3F3F3")
+        Color::from_hex("#202020")
     };
 
     unsafe {
@@ -3391,7 +3435,7 @@ fn paint(hdc: HDC, hwnd: HWND) {
             mem_dc,
             width,
             height,
-            is_dark,
+            surface_is_dark,
             &bg_color,
             &text_color,
             &accent,
@@ -3472,7 +3516,7 @@ fn draw_row(
                 label_rect,
                 label,
                 *text_color,
-                11.0,
+                12.0,
             )
             .map_err(|error| {
                 diagnose::log_error("DirectWrite label fallback", error);
@@ -3616,7 +3660,7 @@ fn draw_usage_bar(
                 text_rect,
                 text,
                 *text_color,
-                11.0,
+                12.0,
             )
             .map_err(|error| {
                 diagnose::log_error("DirectWrite value fallback", error);

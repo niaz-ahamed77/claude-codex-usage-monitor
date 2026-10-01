@@ -4,11 +4,6 @@ use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVE
 use windows::Win32::UI::Shell::{SHAppBarMessage, ABM_GETTASKBARPOS, APPBARDATA};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-// Window style constants
-pub const WS_POPUP_STYLE: u32 = 0x80000000;
-pub const WS_CHILD_STYLE: u32 = 0x40000000;
-pub const WS_CLIPSIBLINGS_STYLE: u32 = 0x04000000;
-
 // Win event constants
 pub const EVENT_OBJECT_LOCATIONCHANGE: u32 = 0x800B;
 pub const WINEVENT_OUTOFCONTEXT: u32 = 0x0000;
@@ -76,26 +71,6 @@ pub fn get_window_rect_safe(hwnd: HWND) -> Option<RECT> {
         } else {
             None
         }
-    }
-}
-
-/// Embed our window as a child of the taskbar
-pub fn embed_in_taskbar(hwnd: HWND, taskbar_hwnd: HWND) {
-    unsafe {
-        // Preserve existing extended style, add tool window + no activate
-        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE);
-        let _ = SetWindowLongW(
-            hwnd,
-            GWL_EXSTYLE,
-            ex_style | WS_EX_TOOLWINDOW.0 as i32 | WS_EX_NOACTIVATE.0 as i32,
-        );
-
-        // Change from popup to child
-        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
-        let new_style = (style & !WS_POPUP_STYLE) | WS_CHILD_STYLE | WS_CLIPSIBLINGS_STYLE;
-        let _ = SetWindowLongW(hwnd, GWL_STYLE, new_style as i32);
-
-        let _ = SetParent(hwnd, taskbar_hwnd);
     }
 }
 
