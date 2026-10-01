@@ -336,7 +336,7 @@ fn text_column_width_logical() -> i32 {
     match (show_percentages(), show_reset_timer()) {
         (true, true) => {
             if detailed {
-                100 // "100% · 23h 59m" (incl. CJK suffixes)
+                142 // "100% · 23h 59m" (incl. CJK suffixes)
             } else {
                 TEXT_WIDTH
             }
@@ -1106,7 +1106,7 @@ const DIVIDER_RIGHT_MARGIN: i32 = 10;
 const LABEL_WIDTH: i32 = 18;
 const LABEL_RIGHT_MARGIN: i32 = 10;
 const BAR_RIGHT_MARGIN: i32 = 4;
-const TEXT_WIDTH: i32 = 62;
+const TEXT_WIDTH: i32 = 104;
 const MODEL_RIGHT_MARGIN: i32 = 5;
 const RIGHT_MARGIN: i32 = 1;
 const WIDGET_HEIGHT: i32 = 46;
@@ -3474,6 +3474,17 @@ fn draw_row(
             );
             model_x = x + sc(LABEL_WIDTH) + sc(LABEL_RIGHT_MARGIN);
         }
+        let claude_display = if show_claude_code && show_codex {
+            format!("Claude {claude_text}")
+        } else {
+            claude_text.to_string()
+        };
+        let codex_display = if show_claude_code && show_codex {
+            format!("Codex {codex_text}")
+        } else {
+            codex_text.to_string()
+        };
+
         if show_claude_code {
             draw_usage_bar(
                 hdc,
@@ -3481,7 +3492,7 @@ fn draw_row(
                 y,
                 segment_count,
                 claude_percent,
-                claude_text,
+                &claude_display,
                 claude_accent,
                 track,
                 &claude_value_color,
@@ -3497,7 +3508,7 @@ fn draw_row(
                 y,
                 segment_count,
                 codex_percent,
-                codex_text,
+                &codex_display,
                 codex_accent,
                 track,
                 &codex_value_color,
