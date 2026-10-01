@@ -18,6 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 
 use crate::character::{self, CharacterKind};
 use crate::diagnose;
+use crate::directwrite_text;
 use crate::localization::{self, LanguageId, Strings};
 use crate::models::AppUsageData;
 use crate::native_interop::{
@@ -3466,12 +3467,25 @@ fn draw_row(
                 right: x + sc(LABEL_WIDTH),
                 bottom: y + seg_h,
             };
-            let _ = DrawTextW(
+            if directwrite_text::draw_text(
                 hdc,
-                &mut label_wide,
-                &mut label_rect,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE,
-            );
+                label_rect,
+                label,
+                *text_color,
+                11.0,
+            )
+            .map_err(|error| {
+                diagnose::log_error("DirectWrite label fallback", error);
+            })
+            .is_err()
+            {
+                let _ = DrawTextW(
+                    hdc,
+                    &mut label_wide,
+                    &mut label_rect,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                );
+            }
             model_x = x + sc(LABEL_WIDTH) + sc(LABEL_RIGHT_MARGIN);
         }
         let claude_display = if show_claude_code && show_codex {
@@ -3597,12 +3611,25 @@ fn draw_usage_bar(
                 bottom: y + seg_h,
             };
             let _ = SetTextColor(hdc, COLORREF(text_color.to_colorref()));
-            let _ = DrawTextW(
+            if directwrite_text::draw_text(
                 hdc,
-                &mut text_wide,
-                &mut text_rect,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE,
-            );
+                text_rect,
+                text,
+                *text_color,
+                11.0,
+            )
+            .map_err(|error| {
+                diagnose::log_error("DirectWrite value fallback", error);
+            })
+            .is_err()
+            {
+                let _ = DrawTextW(
+                    hdc,
+                    &mut text_wide,
+                    &mut text_rect,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                );
+            }
         }
     }
 }

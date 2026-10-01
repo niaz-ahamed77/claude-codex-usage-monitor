@@ -2,6 +2,7 @@
 
 mod character;
 mod diagnose;
+mod directwrite_text;
 mod localization;
 mod models;
 mod native_interop;
