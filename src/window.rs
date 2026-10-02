@@ -22,8 +22,8 @@ use crate::directwrite_text;
 use crate::localization::{self, LanguageId, Strings};
 use crate::models::AppUsageData;
 use crate::native_interop::{
-    self, Color, TIMER_COUNTDOWN, TIMER_POLL, TIMER_RESET_POLL, TIMER_UPDATE_CHECK, WM_APP_TRAY,
-    WM_APP_USAGE_UPDATED,
+    self, Color, TIMER_COUNTDOWN, TIMER_POLL, TIMER_RESET_POLL, TIMER_STARTUP_REFRESH,
+    TIMER_UPDATE_CHECK, WM_APP_TRAY, WM_APP_USAGE_UPDATED,
 };
 use crate::poller;
 use crate::theme;
@@ -87,6 +87,7 @@ struct AppState {
     drag_start_offset: i32,
 
     widget_visible: bool,
+    startup_refresh_remaining: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -1419,6 +1420,7 @@ pub fn run() {
                 drag_start_mouse_x: 0,
                 drag_start_offset: 0,
                 widget_visible: settings.widget_visible,
+                startup_refresh_remaining: 8,
             });
         }
 
@@ -1512,6 +1514,7 @@ pub fn run() {
                 .unwrap_or(POLL_15_MIN)
         };
         SetTimer(hwnd, TIMER_POLL, initial_poll_ms, None);
+        SetTimer(hwnd, TIMER_STARTUP_REFRESH, 1_000, None);
 
         // Initial poll
         let send_hwnd = SendHwnd::from_hwnd(hwnd);
@@ -2407,6 +2410,31 @@ unsafe extern "system" fn wnd_proc(
                     update_display();
                     render_layered();
                     schedule_countdown_timer();
+                }
+                TIMER_STARTUP_REFRESH => {
+                    let (should_refresh, finished) = {
+                        let mut state = lock_state();
+                        match state.as_mut() {
+                            Some(s) => {
+                                if s.startup_refresh_remaining > 0 {
+                                    s.startup_refresh_remaining -= 1;
+                                }
+                                (s.widget_visible, s.startup_refresh_remaining == 0)
+                            }
+                            None => (false, true),
+                        }
+                    };
+
+                    if should_refresh {
+                        position_at_taskbar();
+                        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+                        render_layered();
+                    }
+
+                    if finished {
+                        let _ = KillTimer(hwnd, TIMER_STARTUP_REFRESH);
+                        diagnose::log("startup taskbar refresh retries completed");
+                    }
                 }
                 TIMER_RESET_POLL => {
                     let should_poll = {
