@@ -6,6 +6,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 
 // Win event constants
 pub const EVENT_OBJECT_LOCATIONCHANGE: u32 = 0x800B;
+pub const EVENT_SYSTEM_FOREGROUND: u32 = 0x0003;
 pub const WINEVENT_OUTOFCONTEXT: u32 = 0x0000;
 
 // Timer IDs
@@ -105,6 +106,27 @@ pub fn set_tray_event_hook(
 }
 
 /// Get the thread ID that owns a window
+pub fn set_foreground_event_hook(
+    callback: unsafe extern "system" fn(HWINEVENTHOOK, u32, HWND, i32, i32, u32, u32),
+) -> Option<HWINEVENTHOOK> {
+    unsafe {
+        let hook = SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND,
+            EVENT_SYSTEM_FOREGROUND,
+            None,
+            Some(callback),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        );
+        if hook.is_invalid() {
+            None
+        } else {
+            Some(hook)
+        }
+    }
+}
+
 pub fn get_window_thread_id(hwnd: HWND) -> u32 {
     unsafe { GetWindowThreadProcessId(hwnd, None) }
 }

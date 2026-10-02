@@ -51,6 +51,7 @@ struct AppState {
     taskbar_hwnd: Option<HWND>,
     tray_notify_hwnd: Option<HWND>,
     win_event_hook: Option<HWINEVENTHOOK>,
+    foreground_event_hook: Option<HWINEVENTHOOK>,
     is_dark: bool,
     embedded: bool,
     language_override: Option<LanguageId>,
@@ -1387,6 +1388,7 @@ pub fn run() {
                 taskbar_hwnd: None,
                 tray_notify_hwnd: None,
                 win_event_hook: None,
+                foreground_event_hook: None,
                 is_dark,
                 embedded: false,
                 language_override,
@@ -1446,6 +1448,15 @@ pub fn run() {
                 } else {
                     diagnose::log("tray event hook could not be installed");
                 }
+            }
+
+            let foreground_hook =
+                native_interop::set_foreground_event_hook(on_foreground_changed);
+            s.foreground_event_hook = foreground_hook;
+            if foreground_hook.is_some() {
+                diagnose::log("foreground event hook installed");
+            } else {
+                diagnose::log("foreground event hook could not be installed");
             }
         } else {
             diagnose::log("taskbar not found; using fallback popup window");
@@ -2285,6 +2296,29 @@ unsafe extern "system" fn on_tray_location_changed(
     }
 }
 
+unsafe extern "system" fn on_foreground_changed(
+    _hook: HWINEVENTHOOK,
+    _event: u32,
+    _hwnd: HWND,
+    _id_object: i32,
+    _id_child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    let should_raise = {
+        let state = lock_state();
+        state
+            .as_ref()
+            .map(|s| s.widget_visible)
+            .unwrap_or(false)
+    };
+
+    if should_raise {
+        diagnose::log("foreground changed; reasserting taskbar overlay");
+        position_at_taskbar();
+    }
+}
+
 /// Main window procedure
 unsafe extern "system" fn wnd_proc(
     hwnd: HWND,
@@ -2665,12 +2699,17 @@ unsafe extern "system" fn wnd_proc(
                     }
                 }
                 2 => {
-                    let hook = {
+                    let hooks = {
                         let state = lock_state();
-                        state.as_ref().and_then(|s| s.win_event_hook)
+                        state.as_ref().map(|s| (s.win_event_hook, s.foreground_event_hook))
                     };
-                    if let Some(h) = hook {
-                        native_interop::unhook_win_event(h);
+                    if let Some((tray_hook, foreground_hook)) = hooks {
+                        if let Some(h) = tray_hook {
+                            native_interop::unhook_win_event(h);
+                        }
+                        if let Some(h) = foreground_hook {
+                            native_interop::unhook_win_event(h);
+                        }
                     }
                     PostQuitMessage(0);
                 }
@@ -2885,12 +2924,17 @@ unsafe extern "system" fn wnd_proc(
             LRESULT(0)
         }
         WM_DESTROY => {
-            let hook = {
+            let hooks = {
                 let state = lock_state();
-                state.as_ref().and_then(|s| s.win_event_hook)
+                state.as_ref().map(|s| (s.win_event_hook, s.foreground_event_hook))
             };
-            if let Some(h) = hook {
-                native_interop::unhook_win_event(h);
+            if let Some((tray_hook, foreground_hook)) = hooks {
+                if let Some(h) = tray_hook {
+                    native_interop::unhook_win_event(h);
+                }
+                if let Some(h) = foreground_hook {
+                    native_interop::unhook_win_event(h);
+                }
             }
             character::destroy();
             tray_icon::remove_all(hwnd);
