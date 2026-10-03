@@ -15,6 +15,7 @@ pub const TIMER_COUNTDOWN: usize = 2;
 pub const TIMER_RESET_POLL: usize = 3;
 pub const TIMER_UPDATE_CHECK: usize = 4;
 pub const TIMER_STARTUP_REFRESH: usize = 5;
+pub const TIMER_TASKBAR_VISIBILITY: usize = 6;
 
 // Custom messages
 pub const WM_APP: u32 = 0x8000;

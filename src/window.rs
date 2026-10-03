@@ -23,7 +23,7 @@ use crate::localization::{self, LanguageId, Strings};
 use crate::models::AppUsageData;
 use crate::native_interop::{
     self, Color, TIMER_COUNTDOWN, TIMER_POLL, TIMER_RESET_POLL, TIMER_STARTUP_REFRESH,
-    TIMER_UPDATE_CHECK, WM_APP_TRAY, WM_APP_USAGE_UPDATED,
+    TIMER_TASKBAR_VISIBILITY, TIMER_UPDATE_CHECK, WM_APP_TRAY, WM_APP_USAGE_UPDATED,
 };
 use crate::poller;
 use crate::theme;
@@ -648,9 +648,7 @@ fn toggle_widget_visibility(hwnd: HWND) {
     save_state_settings();
     unsafe {
         if new_visible {
-            position_at_taskbar();
-            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-            render_layered();
+            sync_taskbar_overlay_visibility(true);
         } else {
             let _ = ShowWindow(hwnd, SW_HIDE);
         }
@@ -1515,6 +1513,7 @@ pub fn run() {
         };
         SetTimer(hwnd, TIMER_POLL, initial_poll_ms, None);
         SetTimer(hwnd, TIMER_STARTUP_REFRESH, 1_000, None);
+        SetTimer(hwnd, TIMER_TASKBAR_VISIBILITY, 500, None);
 
         // Initial poll
         let send_hwnd = SendHwnd::from_hwnd(hwnd);
@@ -2299,6 +2298,66 @@ unsafe extern "system" fn on_tray_location_changed(
     }
 }
 
+fn taskbar_is_exposed() -> bool {
+    let taskbar_hwnd = {
+        let state = lock_state();
+        state.as_ref().and_then(|s| s.taskbar_hwnd)
+    };
+
+    let Some(taskbar_hwnd) = taskbar_hwnd else {
+        return false;
+    };
+    let Some(taskbar_rect) = native_interop::get_window_rect_safe(taskbar_hwnd) else {
+        return false;
+    };
+
+    unsafe {
+        // Sample a point near the far-left side of the taskbar, away from this
+        // widget. If a fullscreen/topmost app covers the taskbar, Windows will
+        // report that app here instead of the taskbar tree.
+        let point = POINT {
+            x: taskbar_rect.left + 8,
+            y: taskbar_rect.top + (taskbar_rect.bottom - taskbar_rect.top) / 2,
+        };
+        let hit = WindowFromPoint(point);
+        if hit == HWND::default() {
+            return false;
+        }
+
+        let hit_root = GetAncestor(hit, GA_ROOT);
+        let taskbar_root = GetAncestor(taskbar_hwnd, GA_ROOT);
+        hit == taskbar_hwnd || hit_root == taskbar_root
+    }
+}
+
+fn sync_taskbar_overlay_visibility(force_reassert: bool) {
+    let (hwnd, preference_visible) = {
+        let state = lock_state();
+        let Some(s) = state.as_ref() else {
+            return;
+        };
+        (s.hwnd.to_hwnd(), s.widget_visible)
+    };
+
+    unsafe {
+        let currently_visible = IsWindowVisible(hwnd).as_bool();
+        let should_show = preference_visible && taskbar_is_exposed();
+
+        if !should_show {
+            if currently_visible {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+            }
+            return;
+        }
+
+        if force_reassert || !currently_visible {
+            position_at_taskbar();
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            render_layered();
+        }
+    }
+}
+
 unsafe extern "system" fn on_foreground_changed(
     _hook: HWINEVENTHOOK,
     _event: u32,
@@ -2317,8 +2376,8 @@ unsafe extern "system" fn on_foreground_changed(
     };
 
     if should_raise {
-        diagnose::log("foreground changed; reasserting taskbar overlay");
-        position_at_taskbar();
+        diagnose::log("foreground changed; syncing taskbar overlay visibility");
+        sync_taskbar_overlay_visibility(true);
     }
 }
 
@@ -2426,15 +2485,16 @@ unsafe extern "system" fn wnd_proc(
                     };
 
                     if should_refresh {
-                        position_at_taskbar();
-                        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-                        render_layered();
+                        sync_taskbar_overlay_visibility(true);
                     }
 
                     if finished {
                         let _ = KillTimer(hwnd, TIMER_STARTUP_REFRESH);
                         diagnose::log("startup taskbar refresh retries completed");
                     }
+                }
+                TIMER_TASKBAR_VISIBILITY => {
+                    sync_taskbar_overlay_visibility(false);
                 }
                 TIMER_RESET_POLL => {
                     let should_poll = {
